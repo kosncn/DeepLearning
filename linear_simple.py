@@ -5,6 +5,9 @@ from torch import optim
 from torch.nn import init
 from torch.utils import data as dat
 
+from collections import OrderedDict
+
+
 # 生成数据集
 features = 2
 samples = 1000
@@ -48,6 +51,11 @@ data_iter = dat.DataLoader(data_set, batch_size, True)
 net = nn.Sequential(
     nn.Linear(features, 1)
     # 此处可以继续传入其他层
+
+    # OrderedDict([
+    #     ('linear', nn.Linear(features, 1))
+    #     # 此处可以继续传入其他层
+    # ])
 )
 
 # 写法二：
@@ -58,13 +66,6 @@ net = nn.Sequential(
 # print(net)
 # print(net[0])
 
-# 定义损失函数
-loss = nn.MSELoss()
-
-# 定义优化算法
-optimizer = optim.SGD(net.parameters(), 0.03)
-# print(optimizer)
-
 # 可通过 net.parameters() 查看模型所有学习参数，此函数返回一个生成器
 # for param in net.parameters():
 #     print(param)
@@ -72,6 +73,13 @@ optimizer = optim.SGD(net.parameters(), 0.03)
 # 初始化模型参数
 init.normal_(net[0].weight, 0, 0.01)
 init.constant_(net[0].bias, 0)
+
+# 定义损失函数
+loss = nn.MSELoss()
+
+# 定义优化算法
+optimizer = optim.SGD(net.parameters(), 0.03)
+# print(optimizer)
 
 # 训练模型
 epochs = 5

@@ -1,10 +1,32 @@
-import torch
+from torch import nn
+from torch import optim
+from torch.nn import init
 from torch.utils import data as dat
 
 from torchvision import datasets
 from torchvision import transforms
 
+from collections import OrderedDict
+
 from matplotlib import pyplot as plt
+
+
+class FlattenLayer(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x_m):  # x shape: (batch_size, *, *, *)
+        return x_m.view(x_m.shape[0], -1)
+
+
+class LinearNet(nn.Module):
+    def __init__(self, ipt, opt):
+        super().__init__()
+        self.linear = nn.Linear(ipt, opt)
+
+    def forward(self, x_m):
+        y_m = self.linear(x_m.view(x_m.shape[0], -1))  # x shape: (batch_size, 1, 28, 28)
+        return y_m
 
 
 def get_fashion_mnist_labels(labels):
@@ -23,29 +45,6 @@ def show_fashion_mnist(images, labels):
     plt.show()
 
 
-def net(x_n):
-    return softmax(torch.mm(x_n.view(-1, inputs), w) + b)
-
-
-def softmax(x_s):
-    x_exp = x_s.exp()
-    partition = x_exp.sum(1, keepdim=True)
-    return x_exp / partition
-
-
-def cross_entropy(y_hat, y_true):
-    return -torch.log(y_hat.gather(1, y_true.view(-1, 1)))
-
-
-def sgd(params, l_r, b_s):
-    for p in params:
-        p.data -= l_r * p.grad / b_s
-
-
-def accuracy(y_hat, y_true):
-    return (y_hat.argmax(1) == y_true).float().mean().item()
-
-
 def evaluate_accuracy(data_iter, network):
     acc_sum, n = 0.0, 0
     for x_i, y_i in data_iter:
@@ -54,22 +53,9 @@ def evaluate_accuracy(data_iter, network):
     return acc_sum / n
 
 
-# 获取并读取数据集
+# 下载并读取数据集
 mnist_train = datasets.FashionMNIST(r'.\Datasets', train=True, transform=transforms.ToTensor(), download=True)
 mnist_test = datasets.FashionMNIST(r'.\Datasets', train=False, transform=transforms.ToTensor(), download=True)
-# print(type(mnist_train))
-# print(len(mnist_train), len(mnist_test))
-
-# feature, label = mnist_train[0]
-# print(feature.shape)
-# print(label)
-
-# 查看训练集中前10个样本的图像内容和对应文本标签
-# x_t, y_t = [], []
-# for t in range(10):
-#     x_t.append(mnist_train[t][0])
-#     y_t.append(mnist_train[t][1])
-# show_fashion_mnist(x_t, get_fashion_mnist_labels(y_t))
 
 # 生成数据
 batch_size = 256
@@ -79,48 +65,46 @@ test_iter = dat.DataLoader(mnist_test, batch_size=batch_size, shuffle=False)
 # 初始化模型参数
 inputs = 784
 outputs = 10
-w = torch.normal(0, 0.01, (inputs, outputs), requires_grad=True)
-b = torch.zeros(outputs, requires_grad=True)
 
-# 测试对多维Tensor按维度操作
-# d = torch.tensor([[1, 2, 3], [4, 5, 6]])
-# print(d.sum(0, keepdim=True))
-# print(d.sum(1, keepdim=True))
+# 定义模型（方式一）
+# net = LinearNet(inputs, outputs)
 
-# 测试softmax运算
-# s = torch.randn(3, 5)
-# x_prob = softmax(s)
-# print(s)
-# print(x_prob)
-# print(x_prob.sum(1))
+# 定义模型（方式二）
+net = nn.Sequential(
+    # FlattenLayer(),
+    # nn.Linear(inputs, outputs)
 
-# 测试 gather 函数
-# y_h = torch.tensor([[0.1, 0.3, 0.6], [0.3, 0.2, 0.5]])
-# y_r = torch.tensor([0, 2])
-# print(y_h.gather(1, y_r.view(-1, 1)))
+    OrderedDict([
+        ('flatten', FlattenLayer()),
+        ('linear', nn.Linear(inputs, outputs))
+    ])
+)
 
-# 测试 accuracy 函数
-# print(accuracy(y_h, y_r))
+# 初始化模型权重参数
+init.normal_(net.linear.weight, 0, 0.01)
+init.constant_(net.linear.bias, 0)
 
-# 测试 evaluate_accuracy 函数
-# print(evaluate_accuracy(test_iter, net))
+# 定义损失函数
+loss = nn.CrossEntropyLoss()
+
+# 定义优化算法
+optimizer = optim.SGD(net.parameters(), 0.1)
 
 # 训练模型
 epochs = 5
-lr = 0.1
+
 for epoch in range(epochs):
     train_loss, train_acc, count = 0.0, 0.0, 0
     for x, y in train_iter:
-        y_pred = net(x)
-        loss = cross_entropy(y_pred, y).sum()
-        loss.backward()  # 反向传播
-        sgd([w, b], lr, batch_size)  # 更新参数
-        for param in [w, b]:
-            param.grad.data.zero_()  # 清零梯度
-        train_loss += loss.item()
-        train_acc += (y_pred.argmax(1) == y).float().sum().item()
+        y_hat = net(x)
+        los = loss(y_hat, y).sum()
+        los.backward()  # 反向传播
+        optimizer.step()  # 更新参数
+        optimizer.zero_grad()  # 清零梯度
+        train_loss += los.item()
+        train_acc += (y_hat.argmax(1) == y).float().sum().item()
         count += y.shape[0]
-    test_acc = evaluate_accuracy(test_iter, net)  # 测试集准确率
+    test_acc = evaluate_accuracy(test_iter, net)
     print(f'epoch: {epoch + 1}, loss: {train_loss / count:.5f}, train acc: {train_acc / count:.5f}, test acc: {test_acc:.5f}')
 
 # 预测测试集上一个批量样本
